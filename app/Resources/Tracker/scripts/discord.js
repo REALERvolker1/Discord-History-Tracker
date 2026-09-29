@@ -154,8 +154,29 @@ class DISCORD {
 		let url;
 		try { url = new URL(link.getAttribute("href"), window.location.origin); }
 		catch { return null; }
+		
 		const parts = url.pathname.split("/").filter(Boolean);
 		if (parts.length < 3 || parts[0] !== "channels" || parts[1] !== forumChannel.guild_id) return null;
+		
+		// Discord renders forum cards with routes like:
+		// /channels/<guild>/<forum>/threads/<thread>
+		// The thread may not be present in ChannelStore until the post is opened,
+		// so trust the explicit forum/thread route instead of requiring store lookup.
+		if (parts[2] === forumChannel.id) {
+			if (parts[3] === "threads" && parts[4]) {
+				return parts[4];
+			}
+			
+			// Keep compatibility with alternate forum routes that put the thread
+			// directly after the parent forum ID.
+			if (parts[3] && /^\\d+$/.test(parts[3])) {
+				return parts[3];
+			}
+		}
+		
+		// Existing/full-view thread routes look like /channels/<guild>/<thread>.
+		// Verify those through ChannelStore so unrelated channel links in the page
+		// are not mistaken for forum posts.
 		const channelId = parts[2];
 		const channel = this.#channelStore.getChannel(channelId);
 		return channel && channel.parent_id === forumChannel.id && this.CHANNEL_TYPE.isThread(channel.type) ? channelId : null;
@@ -163,7 +184,7 @@ class DISCORD {
 	
 	static #scanForumPostLinks(forumChannel, orderedIds, seenIds) {
 		let firstMatchingLink = null;
-		for (const link of document.querySelectorAll("a[href]")) {
+		for (const link of document.querySelectorAll("[href]")) {
 			const channelId = this.#getForumPostIdFromLink(link, forumChannel);
 			if (!channelId) continue;
 			if (!firstMatchingLink) firstMatchingLink = link;
