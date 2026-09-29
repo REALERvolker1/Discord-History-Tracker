@@ -204,13 +204,14 @@ export default (function() {
 			}
 			else {
 				if (getActiveFilter() != null) {
-					channels = channels.filter(channel => channel.msgcount > 0);
+					channels = channels.filter(channel => channel.msgcount > 0 || channel.hasChildren);
 				}
 				
 				eleChannels.innerHTML = channels.map(channel => discord.getChannelHTML(channel)).join("");
 				
 				Array.prototype.forEach.call(eleChannels.children, ele => {
 					ele.addEventListener("click", () => {
+						if (ele.getAttribute("data-selectable") === "false") return;
 						const currentChannel = dom.fcls("active", eleChannels);
 						
 						if (currentChannel) {

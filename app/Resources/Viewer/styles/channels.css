@@ -46,3 +46,25 @@
   padding: 2px 5px;
   font-size: 11px;
 }
+
+
+#channels > div.channel {
+  padding-left: calc(12px + (var(--channel-depth, 0) * 14px));
+}
+
+#channels > div.channel.has-children > .info > .name::before {
+  content: "▾ ";
+  color: #b5bac1;
+}
+
+#channels > div.channel.empty {
+  cursor: default;
+}
+
+#channels > div.channel.empty:hover {
+  background-color: transparent;
+}
+
+#channels > div.channel.nested {
+  border-bottom-color: #2a2d31;
+}

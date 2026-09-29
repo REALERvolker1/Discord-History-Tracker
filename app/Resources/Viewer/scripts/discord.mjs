@@ -113,7 +113,7 @@ export default (function() {
 	return {
 		setup() {
 			templateChannelServer = new template([
-				"<div class='channel' data-channel='{id}'>",
+				"<div class='channel{className}' data-channel='{id}' data-selectable='{selectable}' style='--channel-depth:{depth}'>",
 				"<div class='info' title='{topic}'><strong class='name'>#{name}</strong>{nsfw}<span class='tag'>{msgcount}</span></div>",
 				"<span class='server'>{server.name} ({server.type})</span>",
 				"</div>"
@@ -215,9 +215,17 @@ export default (function() {
 		},
 		
 		getChannelHTML(channel) { // noinspection FunctionWithInconsistentReturnsJS
+			channel.className = [
+				channel.depth > 0 ? " nested" : "",
+				channel.hasChildren ? " has-children" : "",
+				!channel.selectable ? " empty" : ""
+			].join("");
 			return (channel.server.type === "server" ? templateChannelServer : templateChannelPrivate).apply(channel, (property, value) => {
 				if (property === "nsfw") {
 					return value ? "<span class='tag'>NSFW</span>" : "";
+				}
+				else if (property === "className") {
+					return value;
 				}
 			});
 		},

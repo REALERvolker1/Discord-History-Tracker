@@ -77,7 +77,17 @@ sealed class SqliteChannelRepository : BaseSqliteRepository, IChannelRepository 
 	public async Task<int> RemoveUnreachable() {
 		int removed;
 		await using (var conn = await pool.Take()) {
-			removed = await conn.ExecuteAsync("DELETE FROM channels WHERE id NOT IN (SELECT DISTINCT channel_id FROM messages)");
+			removed = await conn.ExecuteAsync("""
+				WITH RECURSIVE reachable(id) AS (
+					SELECT DISTINCT channel_id FROM messages
+					UNION
+					SELECT channels.parent_id
+					FROM channels
+					JOIN reachable ON channels.id = reachable.id
+					WHERE channels.parent_id IS NOT NULL
+				)
+				DELETE FROM channels WHERE id NOT IN (SELECT id FROM reachable)
+				""");
 		}
 		
 		UpdateTotalCount();

@@ -51,7 +51,7 @@
 		return action === null || action === CONSTANTS.AUTOSCROLL_ACTION_NOTHING;
 	};
 	
-	const onTrackingContinued = function(anyNewMessages, hasMoreBefore) {
+	const onTrackingContinued = async function(anyNewMessages, hasMoreBefore) {
 		if (!STATE.isTracking()) {
 			return;
 		}
@@ -80,9 +80,22 @@
 			if (isNoAction(action)) {
 				DISCORD.loadOlderMessages();
 			}
-			else if (action === CONSTANTS.AUTOSCROLL_ACTION_PAUSE || (action === CONSTANTS.AUTOSCROLL_ACTION_SWITCH && !DISCORD.selectNextTextChannel())) {
+			else if (action === CONSTANTS.AUTOSCROLL_ACTION_PAUSE) {
 				GUI.setStatus("Reached End");
 				STATE.setIsTracking(false);
+			}
+			else if (action === CONSTANTS.AUTOSCROLL_ACTION_SWITCH) {
+				GUI.setStatus("Switching");
+				try {
+					const switched = await DISCORD.selectNextTextChannel();
+					if (STATE.isTracking() && !switched) {
+						GUI.setStatus("Reached End");
+						STATE.setIsTracking(false);
+					}
+				}
+				catch (e) {
+					onError(e);
+				}
 			}
 		}
 	};
@@ -117,11 +130,11 @@
 		try {
 			if (!messages.length) {
 				isSending = false;
-				onTrackingContinued(false, hasMoreBefore);
+				await onTrackingContinued(false, hasMoreBefore);
 			}
 			else {
 				const anyNewMessages = await STATE.addDiscordMessages(messages);
-				onTrackingContinued(anyNewMessages, hasMoreBefore);
+				await onTrackingContinued(anyNewMessages, hasMoreBefore);
 			}
 		} catch (e) {
 			onError(e);
@@ -130,18 +143,31 @@
 	
 	const starter = DISCORD.setupMessageCallback(onMessagesUpdated);
 	
-	STATE.onTrackingStateChanged(enabled => {
+	STATE.onTrackingStateChanged(async enabled => {
 		if (enabled) {
 			GUI.setStatus("Starting");
 			GUI.createTrackingStyles();
 			hasJustStarted = true;
-			
-			if (!starter()) {
-				stopTrackingDelayed(() => alert("Cannot see any messages."));
-				hasJustStarted = false;
+			try {
+				const selectedChannel = DISCORD.getSelectedChannel();
+				if (selectedChannel && DISCORD.CHANNEL_TYPE.isForum(selectedChannel.type)) {
+					GUI.setStatus("Scanning Forum");
+					if (!await DISCORD.startForumTraversal(selectedChannel) && STATE.isTracking()) {
+						stopTrackingDelayed(() => alert("Cannot find any forum posts."));
+						hasJustStarted = false;
+					}
+				}
+				else if (!starter()) {
+					stopTrackingDelayed(() => alert("Cannot see any messages."));
+					hasJustStarted = false;
+				}
+			}
+			catch (e) {
+				onError(e);
 			}
 		}
 		else {
+			DISCORD.cancelForumTraversal();
 			isSending = false;
 			GUI.deleteTrackingStyles();
 		}
