@@ -182,18 +182,43 @@ class DISCORD {
 		return channel && channel.parent_id === forumChannel.id && this.CHANNEL_TYPE.isThread(channel.type) ? channelId : null;
 	}
 	
-	static #scanForumPostLinks(forumChannel, orderedIds, seenIds) {
-		let firstMatchingLink = null;
-		for (const link of document.querySelectorAll("[href]")) {
-			const channelId = this.#getForumPostIdFromLink(link, forumChannel);
-			if (!channelId) continue;
-			if (!firstMatchingLink) firstMatchingLink = link;
+	static #scanForumPosts(forumChannel, orderedIds, seenIds) {
+		const listItemPrefix = "forum-channel-list-" + forumChannel.id + "___";
+		let firstMatchingElement = null;
+		
+		// Current Discord forum cards are clickable React containers, not links.
+		// Their stable DOM metadata embeds both the parent forum ID and thread ID:
+		// data-list-item-id="forum-channel-list-<forum>___<thread>"
+		for (const element of document.querySelectorAll("[data-list-item-id]")) {
+			const itemId = element.getAttribute("data-list-item-id");
+			if (!itemId || !itemId.startsWith(listItemPrefix)) continue;
+			
+			const channelId = itemId.substring(listItemPrefix.length);
+			if (!/^\\d+$/.test(channelId)) continue;
+			
+			if (!firstMatchingElement) firstMatchingElement = element;
 			if (!seenIds.has(channelId)) {
 				seenIds.add(channelId);
 				orderedIds.push(channelId);
 			}
 		}
-		return firstMatchingLink;
+		
+		// Compatibility fallback for Discord versions that expose actual links.
+		for (const link of document.querySelectorAll("[href]")) {
+			const channelId = this.#getForumPostIdFromLink(link, forumChannel);
+			if (!channelId) continue;
+			if (!firstMatchingElement) firstMatchingElement = link;
+			if (!seenIds.has(channelId)) {
+				seenIds.add(channelId);
+				orderedIds.push(channelId);
+			}
+		}
+		
+		return firstMatchingElement;
+	}
+	
+	static #getForumScrollerElement(forumChannel) {
+		return document.querySelector("[data-list-id='forum-channel-list-" + forumChannel.id + "']");
 	}
 	
 	static #findScrollableAncestor(element) {
@@ -231,13 +256,13 @@ class DISCORD {
 		if (traversalVersion !== this.#forumTraversalVersion) return false;
 		const orderedIds = [];
 		const seenIds = new Set();
-		const firstMatchingLink = this.#scanForumPostLinks(forumChannel, orderedIds, seenIds);
-		const scroller = this.#findScrollableAncestor(firstMatchingLink);
+		const firstMatchingElement = this.#scanForumPosts(forumChannel, orderedIds, seenIds);
+		const scroller = this.#getForumScrollerElement(forumChannel) || this.#findScrollableAncestor(firstMatchingElement);
 		if (scroller) {
 			scroller.scrollTop = 0;
 			scroller.dispatchEvent(new Event("scroll", { bubbles: true }));
 			await this.#sleep(250);
-			this.#scanForumPostLinks(forumChannel, orderedIds, seenIds);
+			this.#scanForumPosts(forumChannel, orderedIds, seenIds);
 			let stableBottomPasses = 0;
 			for (let i = 0; i < 1000 && stableBottomPasses < 4; i++) {
 				if (traversalVersion !== this.#forumTraversalVersion) return false;
@@ -248,14 +273,14 @@ class DISCORD {
 					scroller.scrollTop = Math.min(maxScrollTop, scroller.scrollTop + step);
 					scroller.dispatchEvent(new Event("scroll", { bubbles: true }));
 					await this.#sleep(150);
-					this.#scanForumPostLinks(forumChannel, orderedIds, seenIds);
+					this.#scanForumPosts(forumChannel, orderedIds, seenIds);
 					stableBottomPasses = 0;
 				}
 				else {
 					const previousHeight = scroller.scrollHeight;
 					scroller.dispatchEvent(new Event("scroll", { bubbles: true }));
 					await this.#sleep(400);
-					this.#scanForumPostLinks(forumChannel, orderedIds, seenIds);
+					this.#scanForumPosts(forumChannel, orderedIds, seenIds);
 					if (scroller.scrollHeight > previousHeight + 1 || scroller.scrollTop < scroller.scrollHeight - scroller.clientHeight - 2) stableBottomPasses = 0;
 					else ++stableBottomPasses;
 				}
