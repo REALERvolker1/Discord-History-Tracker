@@ -20,17 +20,32 @@ static class ViewerJsonExport {
 	public static async Task GetMetadata(Stream stream, IDatabaseFile db, MessageFilter? filter = null, CancellationToken cancellationToken = default) {
 		Perf perf = Log.Start();
 		
-		var includedChannels = new List<DiscordChannel>();
-		var includedServerIds = new HashSet<ulong>();
-		
-		HashSet<ulong>? channelIdFilter = filter?.ChannelIds;
+		var allChannels = new List<DiscordChannel>();
+		var channelsById = new Dictionary<ulong, DiscordChannel>();
 		
 		await foreach (DiscordChannel channel in db.Channels.Get(cancellationToken)) {
-			if (channelIdFilter == null || channelIdFilter.Contains(channel.Id)) {
-				includedChannels.Add(channel);
-				includedServerIds.Add(channel.Server);
+			allChannels.Add(channel);
+			channelsById[channel.Id] = channel;
+		}
+		
+		HashSet<ulong>? channelIdFilter = filter?.ChannelIds;
+		HashSet<ulong>? includedChannelIds = null;
+		
+		if (channelIdFilter != null) {
+			includedChannelIds = new HashSet<ulong>(channelIdFilter.Where(channelsById.ContainsKey));
+			foreach (ulong channelId in includedChannelIds.ToArray()) {
+				DiscordChannel channel = channelsById[channelId];
+				while (channel.ParentId is { } parentId && channelsById.TryGetValue(parentId, out DiscordChannel parentChannel)) {
+					if (!includedChannelIds.Add(parentId)) break;
+					channel = parentChannel;
+				}
 			}
 		}
+		
+		var includedChannels = includedChannelIds == null
+			? allChannels
+			: allChannels.Where(channel => includedChannelIds.Contains(channel.Id)).ToList();
+		var includedServerIds = includedChannels.Select(channel => channel.Server).ToHashSet();
 		
 		Dictionary<Snowflake, ViewerJson.JsonUser> users = await GenerateUserList(db, cancellationToken);
 		Dictionary<Snowflake, ViewerJson.JsonServer> servers = await GenerateServerList(db, includedServerIds, cancellationToken);

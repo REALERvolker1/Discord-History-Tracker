@@ -143,15 +143,35 @@ export default (function() {
 		
 		const channels = loadedFileMeta.channels;
 		const channelOrder = generateChannelOrder();
+		const hierarchy = generateChannelHierarchy();
+		const channelDepth = {};
 		
-		return Object.keys(channels).map(key => ({
-			"id": key,
-			"name": channels[key].name,
-			"server": getServer(channels[key].server),
-			"msgcount": getFilteredMessageKeys(key).length,
-			"topic": channels[key].topic || "",
-			"nsfw": channels[key].nsfw || false,
-		})).sort((ac, bc) => {
+		function assignDepth(parentId, depth) {
+			const children = hierarchy.get(parentId);
+			if (!children) return;
+			for (const id of children) {
+				channelDepth[id] = depth;
+				assignDepth(id, depth + 1);
+			}
+		}
+		
+		assignDepth("", 0);
+		
+		return Object.keys(channels).map(key => {
+			const msgcount = getFilteredMessageKeys(key).length;
+			const hasChildren = (hierarchy.get(key)?.size || 0) > 0;
+			return {
+				"id": key,
+				"name": channels[key].name,
+				"server": getServer(channels[key].server),
+				"msgcount": msgcount,
+				"topic": channels[key].topic || "",
+				"nsfw": channels[key].nsfw || false,
+				"depth": channelDepth[key] || 0,
+				"hasChildren": hasChildren,
+				"selectable": msgcount > 0 || !hasChildren,
+			};
+		}).sort((ac, bc) => {
 			return channelOrder[ac.id] - channelOrder[bc.id];
 		});
 	};

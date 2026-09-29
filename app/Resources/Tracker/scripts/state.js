@@ -130,6 +130,13 @@ const STATE = (function() {
 				return;
 			}
 			
+			if (DISCORD.CHANNEL_TYPE.isThread(channelInfo.type) && channelInfo.parent_id) {
+				const parentChannel = DISCORD.getChannel(channelInfo.parent_id);
+				if (parentChannel && DISCORD.CHANNEL_TYPE.isForum(parentChannel.type)) {
+					await this.addDiscordChannel(serverInfo, parentChannel);
+				}
+			}
+			
 			const server = {
 				type: getChannelTypeName(channelInfo.type)
 			};
@@ -168,11 +175,15 @@ const STATE = (function() {
 				channel.extra.topic = channelInfo.topic;
 			}
 			
-			if ("position" in channelInfo) {
+			const forumPosition = DISCORD.getForumThreadPosition(channelInfo.id);
+			if (typeof forumPosition === "number") {
+				channel.extra.position = forumPosition;
+			}
+			else if ("position" in channelInfo) {
 				channel.extra.position = channelInfo.position;
 			}
 			
-			if (channelInfo.type === DISCORD.CHANNEL_TYPE.ANNOUNCEMENT_THREAD || channelInfo.type === DISCORD.CHANNEL_TYPE.PUBLIC_THREAD || channelInfo.type === DISCORD.CHANNEL_TYPE.PRIVATE_THREAD) {
+			if (DISCORD.CHANNEL_TYPE.isThread(channelInfo.type)) {
 				channel.extra.parent = channelInfo.parent_id;
 			}
 			
