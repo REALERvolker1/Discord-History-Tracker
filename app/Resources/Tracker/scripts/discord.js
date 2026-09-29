@@ -103,6 +103,7 @@ class DISCORD {
 	static #forumParentId = null;
 	static #forumThreadPositions = new Map();
 	static #forumTraversalVersion = 0;
+	static #scrollDownNudgeTimer = null;
 	
 	static isCompatible() {
 		return !!this.#guildStore
@@ -267,6 +268,29 @@ class DISCORD {
 		if (view.scrollTop > 0) {
 			view.scrollTop = 0;
 		}
+		
+		window.clearTimeout(this.#scrollDownNudgeTimer);
+		const delay = 250 + Math.floor(Math.random() * 1001);
+		
+		this.#scrollDownNudgeTimer = window.setTimeout(() => {
+			this.#scrollDownNudgeTimer = null;
+			
+			if (!view.isConnected) {
+				return;
+			}
+			
+			const deltaY = 100;
+			view.dispatchEvent(new WheelEvent("wheel", {
+				bubbles: true,
+				cancelable: true,
+				deltaY,
+				deltaMode: WheelEvent.DOM_DELTA_PIXEL
+			}));
+			
+			// Synthetic wheel events do not perform the browser's default scroll action,
+			// so mirror a single downward wheel step for the Discord message scroller.
+			view.scrollTop += deltaY;
+		}, delay);
 	}
 	
 	static getMessagesFromSelectedChannel() {
