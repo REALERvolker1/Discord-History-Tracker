@@ -121,7 +121,79 @@ class DISCORD {
 		return this.#channelStore.getChannel(channelId);
 	}
 	
+	static #getFocusedForumThreadId() {
+		for (const element of document.querySelectorAll("[data-list-item-id^='chat-messages___chat-messages-']")) {
+			const itemId = element.getAttribute("data-list-item-id");
+			const match = itemId?.match(/^chat-messages___chat-messages-(\d+)-\d+$/);
+			if (match) {
+				return match[1];
+			}
+		}
+		
+		for (const element of document.querySelectorAll("[id^='chat-messages-']")) {
+			const match = element.id.match(/^chat-messages-(\d+)-\d+$/);
+			if (match) {
+				return match[1];
+			}
+		}
+		
+		return null;
+	}
+	
+	static #getFocusedForumThreadTitle() {
+		const header = document.querySelector("section[aria-label='Thread header']");
+		const title = header?.querySelector("h2")?.textContent?.trim();
+		
+		if (!title) {
+			return null;
+		}
+		
+		return title.replace(/^Thread:\s*/, "").trim() || null;
+	}
+	
+	static getFocusedForumThread() {
+		const threadId = this.#getFocusedForumThreadId();
+		if (!threadId) {
+			return null;
+		}
+		
+		const actualChannel = this.#channelStore.getChannel(threadId);
+		const selectedChannelId = this.#getCurrentlySelectedChannelId();
+		const selectedChannel = selectedChannelId ? this.#channelStore.getChannel(selectedChannelId) : null;
+		
+		let parentChannel = actualChannel?.parent_id ? this.#channelStore.getChannel(actualChannel.parent_id) : null;
+		if (!parentChannel && selectedChannel && this.CHANNEL_TYPE.isForum(selectedChannel.type)) {
+			parentChannel = selectedChannel;
+		}
+		
+		if (!parentChannel || !this.CHANNEL_TYPE.isForum(parentChannel.type)) {
+			return null;
+		}
+		
+		const title = this.#getFocusedForumThreadTitle() || actualChannel?.name || threadId;
+		const channel = {
+			id: threadId,
+			guild_id: actualChannel?.guild_id || parentChannel.guild_id,
+			type: actualChannel?.type || this.CHANNEL_TYPE.PUBLIC_THREAD,
+			parent_id: actualChannel?.parent_id || parentChannel.id,
+			name: parentChannel.name + " — " + title
+		};
+		
+		for (const property of [ "nsfw", "topic", "position" ]) {
+			if (actualChannel && property in actualChannel) {
+				channel[property] = actualChannel[property];
+			}
+		}
+		
+		return { id: threadId, channel, parentChannel, title };
+	}
+	
 	static getSelectedChannel() {
+		const focusedThread = this.getFocusedForumThread();
+		if (focusedThread) {
+			return focusedThread.channel;
+		}
+		
 		const channelId = this.#getCurrentlySelectedChannelId();
 		return channelId ? this.#channelStore.getChannel(channelId) : null;
 	}
@@ -340,7 +412,8 @@ class DISCORD {
 	}
 	
 	static getMessagesFromSelectedChannel() {
-		const channelId = this.#getCurrentlySelectedChannelId();
+		const focusedThread = this.getFocusedForumThread();
+		const channelId = focusedThread?.id || this.#getCurrentlySelectedChannelId();
 		return channelId ? this.#getMessages(channelId) : null;
 	}
 	
@@ -357,7 +430,11 @@ class DISCORD {
 				return false;
 			}
 			
-			const channel = this.#channelStore.getChannel(messages.channelId);
+			const focusedThread = this.getFocusedForumThread();
+			let channel = focusedThread?.id === messages.channelId
+				? focusedThread.channel
+				: this.#channelStore.getChannel(messages.channelId);
+			
 			if (!channel) {
 				return false;
 			}
@@ -434,7 +511,8 @@ class DISCORD {
 	 * Selects the next text channel and returns true, otherwise returns false if there are no more channels.
 	 */
 	static async selectNextTextChannel() {
-		let currentChannel = this.getSelectedChannel();
+		const focusedThread = this.getFocusedForumThread();
+		let currentChannel = focusedThread?.parentChannel || this.getSelectedChannel();
 		if (!currentChannel) return false;
 		if (this.CHANNEL_TYPE.isPrivate(currentChannel.type)) {
 			const privateChannels = this.#channelStore.getSortedPrivateChannels();
@@ -459,8 +537,9 @@ class DISCORD {
 				}
 			}
 		}
-		else if (this.CHANNEL_TYPE.isForum(currentChannel.type)) {
-			if (await this.startForumTraversal(currentChannel)) return true;
+		else if (this.CHANNEL_TYPE.isForum(currentChannel.type) && !focusedThread) {
+			// Forum crawling is intentionally skipped. Open a forum post and DHT will
+			// archive the focused thread chat using the normal message tracker.
 		}
 		const guildId = currentChannel.guild_id;
 		let isChannelOptedIn;

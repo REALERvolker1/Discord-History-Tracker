@@ -151,11 +151,8 @@
 			try {
 				const selectedChannel = DISCORD.getSelectedChannel();
 				if (selectedChannel && DISCORD.CHANNEL_TYPE.isForum(selectedChannel.type)) {
-					GUI.setStatus("Scanning Forum");
-					if (!await DISCORD.startForumTraversal(selectedChannel) && STATE.isTracking()) {
-						stopTrackingDelayed(() => alert("Cannot find any forum posts."));
-						hasJustStarted = false;
-					}
+					stopTrackingDelayed(() => alert("Open a forum post first, then start tracking its focused chat."));
+					hasJustStarted = false;
 				}
 				else if (!starter()) {
 					stopTrackingDelayed(() => alert("Cannot see any messages."));
